@@ -2,6 +2,10 @@
 
 Application web locale permettant d’analyser une caméra IP : scan des ports TCP, détection de protocoles probables et vérification de flux RTSP ou de médias HTTP(S).
 
+## Documentation technique
+
+Voir [ARCHITECTURE.md](ARCHITECTURE.md) pour le fonctionnement interne, les routes API, le cycle des tâches, le scan réseau et la vérification des flux média.
+
 ## Fonctionnalités
 
 - Scanne les ports TCP `1–65535` d’une seule adresse IP.
