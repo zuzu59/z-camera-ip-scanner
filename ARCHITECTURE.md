@@ -8,15 +8,15 @@ Le projet est une application Flask autonome, sans base de données ni outil de 
 
 ```mermaid
 flowchart TD
-    U[Navigateur] -->|GET /| F[Flask · scan_camera.py]
-    U -->|POST /api/scans| A[Validation IP et création du job]
-    A --> T[Thread de scan TCP]
-    T --> N[Ports TCP 1–65535]
-    T --> J[(État des jobs en mémoire)]
+    U["Navigateur"] -->|GET /| F["Flask · scan_camera.py"]
+    U -->|POST /api/scans| A["Validation IP et création du job"]
+    A --> T["Thread de scan TCP"]
+    T --> N["Ports TCP 1–65535"]
+    T --> J["État des jobs en mémoire"]
     U -->|GET /api/scans/id| J
-    U -->|POST /api/media-probes| V[Validation des URLs candidates]
-    V --> M[Threads de vérification HTTP(S)/RTSP]
-    M --> C[Caméra IP]
+    U -->|POST /api/media-probes| V["Validation des URLs candidates"]
+    V --> M["Threads de vérification HTTP(S) et RTSP"]
+    M --> C["Caméra IP"]
     M --> J
     U -->|GET /api/scans/id| J
 ```
