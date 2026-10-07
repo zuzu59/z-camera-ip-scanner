@@ -1,2 +1,87 @@
-# z-cam-scanner
-Petit scanner de réseau pour trouver des caméras IP ainsi que leurs URL
+# Scanner de caméra IP
+
+Application web locale permettant d’analyser une caméra IP : scan des ports TCP, détection de protocoles probables et vérification de flux RTSP ou de médias HTTP(S).
+
+## Fonctionnalités
+
+- Scanne les ports TCP `1–65535` d’une seule adresse IP.
+- Identifie les services et protocoles courants associés aux caméras.
+- Recherche des chemins RTSP et HTTP(S), mais ne présente que les URLs dont le média a été vérifié.
+- Détecte le format et, lorsque disponibles, le codec et la résolution.
+- Prend en charge l’authentification HTTP Basic et Digest.
+- Fournit une interface web accessible sur le réseau local.
+
+## Prérequis
+
+- Python 3.10 ou plus récent, avec le module `venv`.
+- Une connexion Internet lors de la première installation des dépendances (installation via `pip`).
+- Aucun accès `sudo` n’est requis : l’environnement Python et ses dépendances sont installés dans le dossier local `.venv/`.
+
+## Installation et démarrage
+
+Le script `start.sh` prépare automatiquement l’environnement virtuel, installe ou vérifie les dépendances listées dans `requirements.txt`, puis lance le serveur en arrière-plan :
+
+```bash
+./start.sh
+```
+
+La première exécution peut prendre un peu de temps, le temps de créer `.venv/` et d’installer Flask, OpenCV (version headless) et NumPy. Les dépendances sont installées dans le projet, pas globalement sur le système. Les exécutions suivantes vérifient les dépendances et démarrent le scanner.
+
+Le serveur écoute par défaut sur toutes les interfaces (`0.0.0.0:8092`). Le script détecte automatiquement l’adresse IP réseau de la machine et affiche l’URL à ouvrir, par exemple :
+
+```text
+URL : http://192.168.0.92:8092/
+```
+
+Ouvrez cette URL depuis un navigateur sur la machine ou un appareil du même réseau. L’adresse affichée dépend du réseau de la machine.
+
+### Autre méthode : installation et démarrage manuels
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python scan_camera.py
+```
+
+Par défaut, `scan_camera.py` écoute aussi sur `0.0.0.0:8092`. Pour changer l’adresse d’écoute, définissez `SCAN_CAMERA_HOST`, par exemple :
+
+```bash
+SCAN_CAMERA_HOST=127.0.0.1 .venv/bin/python scan_camera.py
+```
+
+## Commandes du script
+
+```bash
+./start.sh             # démarre le scanner (commande par défaut)
+./start.sh start       # démarre le scanner
+./start.sh status      # affiche l’état et l’URL d’accès
+./start.sh restart     # arrête puis redémarre le scanner
+./start.sh stop        # arrête le scanner
+./start.sh --help      # affiche l’aide détaillée
+```
+
+Les journaux sont écrits dans `scan_camera.log`. Le script conserve le PID dans `.scan_camera.pid` pour contrôler le processus. Si une autre application utilise déjà le port `8092`, le démarrage échoue : arrêtez cette application ou libérez le port avant de relancer le scanner.
+
+## Utilisation
+
+1. Saisissez l’adresse IP privée ou locale de la caméra. Les noms d’hôte et les sous-réseaux ne sont pas acceptés.
+2. Entrez les identifiants de la caméra si nécessaire.
+3. Lancez le scan des ports.
+4. Cliquez sur **Tester et afficher uniquement les URLs vérifiées**.
+5. Copiez une URL parmi les résultats validés.
+
+Les chemins possibles sont testés en arrière-plan et ne sont pas présentés comme valides s’ils échouent. Les résultats reflètent la réponse de la caméra au moment du test; un flux peut nécessiter des réglages supplémentaires ou devenir indisponible ultérieurement.
+
+## Sécurité
+
+- Utilisez le scanner uniquement sur des caméras que vous êtes autorisé à administrer.
+- L’écoute sur `0.0.0.0` rend le serveur accessible aux appareils pouvant joindre la machine sur le réseau. N’exposez pas le port `8092` sur Internet ou un réseau non fiable. Pour un usage strictement local, lancez manuellement l’application avec `SCAN_CAMERA_HOST=127.0.0.1`.
+- Le navigateur transmet au serveur les URLs et identifiants nécessaires au test des médias via HTTP non chiffré. Les URLs validées peuvent afficher les identifiants en clair : utilisez uniquement un réseau de confiance.
+- Les identifiants ne sont pas enregistrés dans les fichiers du projet ni conservés dans les résultats du scan.
+- Pour réduire les risques, le scanner accepte uniquement une adresse IP privée, locale ou link-local, et ne prend pas en charge les noms d’hôte ou les sous-réseaux.
+
+## Tests
+
+```bash
+.venv/bin/python -m unittest discover -s tests -v
+```
