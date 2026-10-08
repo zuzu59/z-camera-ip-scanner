@@ -84,6 +84,7 @@ Les résultats séparent les services confirmés, les services qui réclament de
 - Utilisez le scanner uniquement sur des caméras que vous êtes autorisé à administrer.
 - L’écoute sur `0.0.0.0` rend le serveur accessible aux appareils pouvant joindre la machine sur le réseau. N’exposez pas le port `8092` sur Internet ou un réseau non fiable. Pour un usage strictement local, lancez manuellement l’application avec `SCAN_CAMERA_HOST=127.0.0.1`.
 - Le navigateur transmet au serveur les URLs et identifiants nécessaires au test des médias via HTTP non chiffré. Les URLs validées peuvent afficher les identifiants en clair : utilisez uniquement un réseau de confiance.
+- Le mot de passe reste visible en clair dans le formulaire et n’est pas effacé après les tests; évitez les appareils partagés.
 - Les identifiants ne sont pas enregistrés dans les fichiers du projet ni conservés dans les résultats du scan. Le test XM/DVRIP n’essaie les identifiants saisis qu’une fois; un mauvais mot de passe peut déclencher le verrouillage décidé par la caméra.
 - Pour réduire les risques, le scanner accepte uniquement une adresse IP privée, locale ou link-local, et ne prend pas en charge les noms d’hôte ou les sous-réseaux.
 

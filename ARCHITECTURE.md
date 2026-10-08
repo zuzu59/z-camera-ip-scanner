@@ -70,7 +70,7 @@ La route `GET /` renvoie le contenu HTML de la constante `PAGE` via `render_temp
 3. Le navigateur interroge `GET /api/scans/<job_id>` toutes les 500 ms et met à jour la barre de progression et la liste des ports ouverts.
 4. Une fois le scan fini, le navigateur construit une liste de chemins de caméra possibles à partir des ports/protocoles détectés. Ces chemins sont des hypothèses et ne sont pas affichés comme URLs valides.
 5. Au clic sur le bouton de vérification, le navigateur envoie les candidates à `POST /api/media-probes`.
-6. Il interroge à nouveau `GET /api/scans/<job_id>` toutes les 500 ms. Les flux ne sont copiables qu’après vérification; les services qui réclament une authentification et les réponses d’échec d’authentification sont affichés séparément.
+6. Il interroge à nouveau `GET /api/scans/<job_id>` toutes les 500 ms. Les flux ne sont copiables qu’après vérification; les services qui réclament une authentification et les réponses d’échec d’authentification sont affichés séparément. Une URL `rtsp://` sur le port 554 est nommée `554/tcp · RTSP`; les informations d’accès non vérifié sont intégrées au format et toutes les colonnes restantes du tableau résultat sont triables. Le bouton Copier utilise l’API presse-papiers en contexte sécurisé et retombe sur une copie DOM pour l’interface LAN en HTTP; l’échec éventuel est visible sur le bouton.
 
 Les candidates comprennent RTSP, les médias/snapshots HTTP(S), `/onvif/device_service` pour ONVIF et un test DVRIP/XM sur le port 34567. Elles sont dédupliquées côté navigateur avant envoi. Une limite serveur de 100 candidates s’applique à chaque requête.
 
@@ -177,12 +177,13 @@ Tous les jobs sont conservés dans le dictionnaire global `jobs`, uniquement en 
 
 ## 8. Sécurité et limites de confiance
 
-Le scan de ports ne transmet que l’adresse IP choisie. Les tests de services/médias contactent la caméra et peuvent inclure les identifiants, nécessairement transmis au serveur pour réaliser l’essai. Le test DVRIP utilise les identifiants saisis pour au plus une tentative de login et peut déclencher le verrouillage du compte en cas d’erreur. Ils ne sont pas écrits sur disque et ne sont pas renvoyés dans l’objet résultat du job, mais sont présents temporairement dans la requête et les données traitées en mémoire. Le navigateur efface le champ mot de passe après la fin de la vérification média.
+Le scan de ports ne transmet que l’adresse IP choisie. Les tests de services/médias contactent la caméra et peuvent inclure les identifiants, nécessairement transmis au serveur pour réaliser l’essai. Le test DVRIP utilise les identifiants saisis pour au plus une tentative de login et peut déclencher le verrouillage du compte en cas d’erreur. Ils ne sont pas écrits sur disque et ne sont pas renvoyés dans l’objet résultat du job, mais sont présents temporairement dans la requête et les données traitées en mémoire. À la demande de l’utilisateur, le champ mot de passe reste affiché en clair et conserve sa valeur après les tests; ne pas utiliser sur un poste partagé.
 
 Autres limites importantes :
 
 - `0.0.0.0` expose l’interface à toutes les interfaces réseau de la machine. Il n’y a pas d’authentification de l’interface ni de chiffrement HTTP; conserver le service sur un réseau de confiance.
 - Les tests HTTP et la page utilisent HTTP; les identifiants et URLs contenant des identifiants ne doivent pas être utilisés sur un réseau non fiable.
+- Le mot de passe reste visible en clair dans le champ du formulaire après le scan; refermez la page sur un appareil partagé.
 - Le serveur autorise un hôte et un port de candidate selon le scan terminé. Les `XAddr` renvoyés par ONVIF sont en plus limités à l’adresse IP scannée pour empêcher un renvoi vers un autre hôte.
 - Les sondes TLS ignorent la validation des certificats.
 - Le scan complet peut durer plusieurs minutes selon la latence et le filtrage réseau; certains ports peuvent être limités ou bloqués par le système d’exploitation ou le réseau.
