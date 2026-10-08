@@ -11,7 +11,7 @@ Voir [ARCHITECTURE.md](ARCHITECTURE.md) pour le fonctionnement interne, les rout
 - Scanne les ports TCP `1–65535` d’une seule adresse IP.
 - Distingue les protocoles observés (avec preuve) des services seulement supposés d’après le numéro de port.
 - Teste HTTP(S) sur tous les ports ouverts détectés; expose le statut HTTP, le serveur annoncé et les défis d’authentification.
-- Vérifie les flux RTSP/RTSPS et les chemins de snapshot/vidéo HTTP(S); seuls les médias reconnus sont copiables.
+- Vérifie les flux RTSP/RTSPS et les chemins de snapshot/vidéo HTTP(S); seules les sources validées sont copiables. Le tableau des résultats est triable sur toutes ses colonnes; les URL RTSP sur le port 554 ont pour source `554/tcp · RTSP`.
 - Vérifie ONVIF, distingue l’authentification requise et détecte le PTZ à partir des capacités, profils et réponse PTZ; l’interface affiche le port du service PTZ sans commander de mouvement.
 - Sur le port XM/DVRIP courant `34567`, peut vérifier le protocole avec une seule tentative utilisant les identifiants saisis; aucune combinaison n’est devinée.
 - Détecte le format et, lorsque disponibles, le codec et la résolution.
