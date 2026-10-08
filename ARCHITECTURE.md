@@ -15,7 +15,7 @@ flowchart TD
     T --> J["État des jobs en mémoire"]
     U -->|GET /api/scans/id| J
     U -->|POST /api/media-probes| V["Validation des URLs candidates"]
-    V --> M["Threads de vérification HTTP(S) et RTSP"]
+    V --> M["Tests HTTP(S), RTSP, ONVIF et DVRIP/XM"]
     M --> C["Caméra IP"]
     M --> J
     U -->|GET /api/scans/id| J
@@ -70,9 +70,9 @@ La route `GET /` renvoie le contenu HTML de la constante `PAGE` via `render_temp
 3. Le navigateur interroge `GET /api/scans/<job_id>` toutes les 500 ms et met à jour la barre de progression et la liste des ports ouverts.
 4. Une fois le scan fini, le navigateur construit une liste de chemins de caméra possibles à partir des ports/protocoles détectés. Ces chemins sont des hypothèses et ne sont pas affichés comme URLs valides.
 5. Au clic sur le bouton de vérification, le navigateur envoie les candidates à `POST /api/media-probes`.
-6. Il interroge à nouveau `GET /api/scans/<job_id>` toutes les 500 ms. Seuls les résultats avec `ok: true` sont présentés comme vérifiés; leurs URLs peuvent alors être copiées.
+6. Il interroge à nouveau `GET /api/scans/<job_id>` toutes les 500 ms. Les flux ne sont copiables qu’après vérification; les services qui réclament une authentification et les réponses d’échec d’authentification sont affichés séparément.
 
-Les candidates incluent notamment les chemins RTSP génériques et associés à des fabricants, ainsi que des chemins HTTP de snapshot, ONVIF ou vidéo. Elles sont dédupliquées côté navigateur avant envoi. Une limite serveur de 100 candidates s’applique à chaque requête.
+Les candidates comprennent RTSP, les médias/snapshots HTTP(S), `/onvif/device_service` pour ONVIF et un test DVRIP/XM sur le port 34567. Elles sont dédupliquées côté navigateur avant envoi. Une limite serveur de 100 candidates s’applique à chaque requête.
 
 ## 4. API HTTP
 
@@ -112,7 +112,7 @@ Corps attendu :
 Le serveur n’accepte les candidates que si le scan référencé existe et est terminé. Pour chaque URL, il vérifie notamment :
 
 - candidate de type objet, URL de type chaîne et longueur maximale de 4096 caractères;
-- schéma parmi `rtsp`, `rtsps`, `http` et `https`;
+- schéma parmi `rtsp`, `rtsps`, `http`, `https` et `dvrip`;
 - hôte correspondant à une adresse IP littérale identique à celle du scan;
 - port explicitement donné ou port par défaut du schéma présent parmi les ports TCP ouverts du scan.
 
@@ -132,24 +132,36 @@ Ces contrôles empêchent que cette route soit utilisée pour tester une autre m
 
 1. Envoie une requête RTSP `OPTIONS *` et cherche une réponse contenant `RTSP/`.
 2. Sinon, envoie une requête HTTP `HEAD /` et cherche une réponse commençant par `HTTP/`.
-3. Pour les ports TLS connus (`443`, `444`, `8443`, `9443`, `322`, `8555`, `4433`), tente une négociation TLS sans vérifier le certificat.
-4. Si aucune signature n’est reconnue, retourne une description probable basée sur `KNOWN_PORTS`, ou le libellé TCP générique.
+3. Sinon, tente TLS sur le port ouvert, puis envoie une requête HTTP `HEAD /` et, si besoin, RTSP `OPTIONS *` dans le tunnel TLS. Un statut HTTP ou une ligne de réponse RTSP confirme l’application correspondante; une négociation TLS seule confirme uniquement TLS.
+4. Si aucune signature n’est reconnue, retourne le nom courant de `KNOWN_PORTS` avec la certitude `probable`, ou `TCP ouvert · protocole non identifié`.
 
-Les services affichés peuvent donc être des suppositions basées sur le numéro de port; ils ne constituent pas une identification certaine du matériel ou du protocole.
+Le résultat expose séparément le protocole, la certitude et l’indice observé (statut HTTP, en-tête `Server`, réponse RTSP ou réussite TLS). Le numéro de port n’est jamais présenté comme preuve. Le fingerprinting est une reconnaissance limitée aux protocoles implémentés, pas une identification universelle de tout service propriétaire.
 
 ## 6. Vérification des médias
 
-`run_media_probe` traite les candidates avec un pool de huit workers. Chaque résultat comprend le `candidate_id`, le label et les informations média; les mises à jour de progression sont protégées par le verrou commun.
+`run_media_probe` traite les candidates avec un pool de huit workers. Chaque résultat comprend le `candidate_id`, le label et les informations média/service; les mises à jour de progression sont protégées par le verrou commun.
 
 ### RTSP / RTSPS
 
 `_probe_rtsp_media` ouvre le flux avec `cv2.VideoCapture` en backend FFmpeg, avec timeout d’ouverture et de lecture de 2500 ms (`MEDIA_TIMEOUT_MS`). Il lit une image : sans ouverture ni image décodable, la candidate échoue. Une image valide permet de retourner le format `Flux RTSP`, la largeur et la hauteur. Le FOURCC fournit le codec lorsqu’il est disponible. La capture est libérée dans tous les cas.
 
+### Service DVRIP / XM
+
+Pour le port TCP `34567`, le navigateur propose un test DVRIP/XM distinct des chemins RTSP. Sans identifiants, le résultat reste `probable` et aucun paquet d’authentification n’est envoyé. Si l’utilisateur a saisi un nom d’utilisateur ou un mot de passe, `_probe_dvrip_service` effectue une unique requête Login DVRIP avec le hash de mot de passe XM, puis interprète une réponse DVRIP valide. Une réponse de refus confirme le protocole mais n’authentifie pas l’accès; une connexion acceptée confirme l’authentification et le scanner envoie un Logout best-effort. Aucun identifiant par défaut, bruteforce ou second essai n’est utilisé. Un mauvais mot de passe peut néanmoins provoquer le verrouillage du compte configuré sur la caméra.
+
+### Service ONVIF
+
+Pour une candidate dont le chemin est `/onvif/device_service`, `_probe_media_candidate` appelle `_probe_onvif_service` au lieu de traiter l’URL comme un média. `_onvif_operation` envoie des requêtes SOAP 1.2, avec WS-Security `UsernameToken`/`PasswordDigest`, nonce et horodatage UTC lorsque des identifiants sont fournis; les handlers HTTP Basic et Digest sont aussi activés.
+
+Après `GetDeviceInformation`, le scanner appelle `GetCapabilities` et cherche le service PTZ, puis `GetProfiles` pour trouver les profils ayant une `PTZConfiguration` et `GetNodes` sur le service PTZ. L’interface affiche « PTZ confirmé » et le port annoncé par son `XAddr` lorsque des profils PTZ existent et que le service retourne un nœud PTZ; un service annoncé mais pas complètement vérifié reste distingué. Tous ces appels sont en lecture seule : aucun `ContinuousMove`, `AbsoluteMove` ou autre commande de mouvement n’est envoyé. Par sécurité, les `XAddr` sont suivis uniquement s’ils utilisent HTTP(S) et la même adresse IP que la caméra scannée.
+
+Le service ONVIF est vérifié quand la réponse SOAP contient `GetDeviceInformationResponse`. Une faute ONVIF d’authentification est affichée comme service détecté mais non authentifié, pas comme URL vérifiée. Les identifiants ne sont pas retournés dans les résultats.
+
 ### HTTP / HTTPS
 
 `_probe_http_media` envoie une requête HTTP avec un en-tête `Range: bytes=0-2097151` et lit au plus 2 Mio de données. Les redirections sont désactivées. Les réponses Basic et Digest sont gérées par les handlers de la bibliothèque standard. L’URL est reconstruite sans userinfo (`utilisateur:motdepasse@`) avant la requête; les identifiants sont passés via les mécanismes d’authentification HTTP.
 
-Le type MIME, l’extension du chemin et quelques signatures binaires (JPEG, PNG, MP4 notamment) servent à identifier le média. Les pages HTML et les réponses non reconnues sont rejetées. OpenCV/NumPy décode les images pour confirmer leur validité et obtenir leurs dimensions. Pour les vidéos HTTP reconnues, le format peut être validé même si OpenCV ne récupère pas de codec ou de résolution; ces champs restent alors `null`.
+Le fingerprinting de port confirme aussi HTTP(S) en sondant `HEAD /` sur chaque port TCP ouvert; il rapporte le code HTTP et, s’il est renvoyé, l’en-tête `Server`/`WWW-Authenticate`, même si le serveur répond `401` ou `403`. La négociation TLS est testée indépendamment du numéro de port. Pour les candidates média, le type MIME, l’extension du chemin et quelques signatures binaires (JPEG, PNG, MP4 notamment) servent à identifier le média. Les pages HTML et les réponses non reconnues sont rejetées. OpenCV/NumPy décode les images pour confirmer leur validité et obtenir leurs dimensions. Pour les vidéos HTTP reconnues, le format peut être validé même si OpenCV ne récupère pas de codec ou de résolution; ces champs restent alors `null`.
 
 Le contexte TLS HTTP(S) accepte les certificats non vérifiés. Cela permet de fonctionner avec des certificats auto-signés de caméras, mais ne protège pas contre une interception TLS.
 
@@ -165,13 +177,13 @@ Tous les jobs sont conservés dans le dictionnaire global `jobs`, uniquement en 
 
 ## 8. Sécurité et limites de confiance
 
-Le scan de ports ne transmet que l’adresse IP choisie. Le test média est différent : il contacte les services de la caméra et peut inclure les identifiants, nécessairement transmis au serveur pour réaliser l’essai. Ils ne sont pas écrits sur disque et ne sont pas renvoyés dans l’objet résultat du job, mais sont présents temporairement dans la requête et les données traitées en mémoire. Le navigateur efface le champ mot de passe après la fin de la vérification média.
+Le scan de ports ne transmet que l’adresse IP choisie. Les tests de services/médias contactent la caméra et peuvent inclure les identifiants, nécessairement transmis au serveur pour réaliser l’essai. Le test DVRIP utilise les identifiants saisis pour au plus une tentative de login et peut déclencher le verrouillage du compte en cas d’erreur. Ils ne sont pas écrits sur disque et ne sont pas renvoyés dans l’objet résultat du job, mais sont présents temporairement dans la requête et les données traitées en mémoire. Le navigateur efface le champ mot de passe après la fin de la vérification média.
 
 Autres limites importantes :
 
 - `0.0.0.0` expose l’interface à toutes les interfaces réseau de la machine. Il n’y a pas d’authentification de l’interface ni de chiffrement HTTP; conserver le service sur un réseau de confiance.
 - Les tests HTTP et la page utilisent HTTP; les identifiants et URLs contenant des identifiants ne doivent pas être utilisés sur un réseau non fiable.
-- Le serveur autorise un hôte et un port de candidate selon le scan terminé, mais ne valide pas l’identité des services au-delà de ces contraintes.
+- Le serveur autorise un hôte et un port de candidate selon le scan terminé. Les `XAddr` renvoyés par ONVIF sont en plus limités à l’adresse IP scannée pour empêcher un renvoi vers un autre hôte.
 - Les sondes TLS ignorent la validation des certificats.
 - Le scan complet peut durer plusieurs minutes selon la latence et le filtrage réseau; certains ports peuvent être limités ou bloqués par le système d’exploitation ou le réseau.
 - Les ports fermés, les filtres, les délais et les formats propriétaires peuvent conduire à des faux négatifs. Une URL est affichée seulement après un essai concluant, mais cela ne garantit pas sa disponibilité future.
@@ -186,4 +198,4 @@ Lancer tous les tests depuis la racine du dépôt :
 .venv/bin/python -m unittest discover -s tests -v
 ```
 
-La suite teste notamment l’acceptation/refus d’adresses IP, le décodage d’une image JPEG, le rejet d’une page HTML, la lecture RTSP simulée, la restriction des candidates à l’IP/au port scanné et l’absence des identifiants dans les résultats retournés et l’état sauvegardé du job média.
+La suite teste notamment l’acceptation/refus d’adresses IP, le fingerprint HTTP avec statut 401 et en-tête serveur, le décodage d’une image JPEG, le rejet d’une page HTML, les requêtes SOAP ONVIF avec `PasswordDigest` et la détection PTZ simulée avec le port du service, la reconnaissance DVRIP via une réponse simulée, la lecture RTSP simulée, la restriction des candidates à l’IP/au port scanné et l’absence des identifiants dans les résultats sauvegardés.
